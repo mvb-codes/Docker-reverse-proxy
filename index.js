@@ -1,9 +1,9 @@
-const http = require('http');
-const express = require('express');
-const Docker = require('dockerode');
-const httpProxy = require('http-proxy');
+const http = require("http");
+const express = require("express");
+const Docker = require("dockerode");
+const httpProxy = require("http-proxy");
 
-const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const proxy = httpProxy.createProxy({});
 const db = new Map();
 
@@ -18,30 +18,35 @@ docker.getEvents((err, stream) => {
     return;
   }
 
-  stream.on('data', async (chunk) => {
+  stream.on("data", async (chunk) => {
     try {
       const event = JSON.parse(chunk.toString());
 
-      if (event.Type === 'container' && event.Action === 'start') {
+      if (event.Type === "container" && event.Action === "start") {
         const container = docker.getContainer(event.id);
         const containerInfo = await container.inspect();
 
-        const containerName = containerInfo.Name.replace(/^\//, '');
+        const containerName = containerInfo.Name.replace(/^\//, "");
         const networks = containerInfo.NetworkSettings.Networks;
-        const bridge = networks['bridge'];
-        const containerIp = bridge?.IPAddress || containerInfo.NetworkSettings.IPAddress;
-        const exposedPorts = Object.keys(containerInfo.Config.ExposedPorts || {});
+        const bridge = networks["bridge"];
+        const containerIp =
+          bridge?.IPAddress || containerInfo.NetworkSettings.IPAddress;
+        const exposedPorts = Object.keys(
+          containerInfo.Config.ExposedPorts || {},
+        );
 
         let defaultPort = null;
         if (exposedPorts.length > 0) {
-          const [port, type] = exposedPorts[0].split('/');
-          if (type === 'tcp') {
+          const [port, type] = exposedPorts[0].split("/");
+          if (type === "tcp") {
             defaultPort = port;
           }
         }
 
         if (containerIp && defaultPort) {
-          console.log(`Registering: ${containerName}.localhost → http://${containerIp}:${defaultPort}`);
+          console.log(
+            `Registering: ${containerName}.localhost → http://${containerIp}:${defaultPort}`,
+          );
           db.set(containerName, { containerIp, defaultPort });
         }
       }
@@ -54,7 +59,7 @@ docker.getEvents((err, stream) => {
 // Reverse proxy routing
 reverseproxyApp.use((req, res) => {
   const hostname = req.hostname;
-  const subdomain = hostname.split('.')[0];
+  const subdomain = hostname.split(".")[0];
 
   if (!db.has(subdomain)) {
     res.status(404).send("Container not found");
@@ -76,12 +81,14 @@ mgmapi.post("/containers", async (req, res) => {
   try {
     const { image, tag = "latest" } = req.body;
     if (!image) {
-      return res.status(400).json({ status: "error", message: "Image is required" });
+      return res
+        .status(400)
+        .json({ status: "error", message: "Image is required" });
     }
 
     const images = await docker.listImages();
-    const imageExists = images.some(img =>
-      (img.RepoTags || []).includes(`${image}:${tag}`)
+    const imageExists = images.some((img) =>
+      (img.RepoTags || []).includes(`${image}:${tag}`),
     );
 
     if (!imageExists) {
@@ -98,8 +105,8 @@ mgmapi.post("/containers", async (req, res) => {
       Image: `${image}:${tag}`,
       Tty: false,
       HostConfig: {
-        AutoRemove: true
-      }
+        AutoRemove: true,
+      },
     });
 
     await container.start();
@@ -107,7 +114,7 @@ mgmapi.post("/containers", async (req, res) => {
 
     res.json({
       status: "success",
-      container: `${Name.replace(/^\//, '')}.localhost`
+      container: `${Name.replace(/^\//, "")}.localhost`,
     });
   } catch (error) {
     console.error("Error creating container:", error);
@@ -116,7 +123,9 @@ mgmapi.post("/containers", async (req, res) => {
 });
 
 // Start servers
-mgmapi.listen(8080, () => console.log("Management API is running on PORT 8080."));
+mgmapi.listen(8080, () =>
+  console.log("Management API is running on PORT 8080."),
+);
 http.createServer(reverseproxyApp).listen(80, () => {
   console.log("Reverse proxy is listening on PORT 80.");
 });
